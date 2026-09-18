@@ -67,12 +67,12 @@ jobs:
           export PATH="${{ github.workspace }}/compiler/bin:$PATH"
           set -ex
           trap "exit 1" ERR
-          ./compile.sh -t android-aarch64 -x -j 4 -P ${{ inputs.pm-version-major }} -c ./download_cache -D -z ${{ inputs.php-version-base }}
+          bash ./compile.sh -t android-aarch64 -x -j 4 -P ${{ inputs.pm-version-major }} -c ./download_cache -D -z ${{ inputs.php-version-base }}
 
       - name: Create tarball (verifica symlinks)
         run: |
-          ./package.sh ./PHP-${{ inputs.php-version-base }}-Android-arm64-PM${{ inputs.pm-version-major }}.tar.gz bin
-          ./package.sh ./Z-PHP-${{ inputs.php-version-base }}-Android-arm64-PM${{ inputs.pm-version-major }}-debugging-symbols.tar.gz bin-debug
+          bash ./package.sh ./PHP-${{ inputs.php-version-base }}-Android-arm64-PM${{ inputs.pm-version-major }}.tar.gz bin
+          bash ./package.sh ./Z-PHP-${{ inputs.php-version-base }}-Android-arm64-PM${{ inputs.pm-version-major }}-debugging-symbols.tar.gz bin-debug
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
@@ -87,7 +87,12 @@ jobs:
 
       - name: Prepare workspace for upload
         if: failure()
-        run: tar -czf workspace.tar.gz install_data
+        run: |
+          if [ -d install_data ]; then
+            tar -czf workspace.tar.gz install_data
+          else
+            echo "install_data no existe: compile.sh fallo antes de crearlo (revisa install.log)"
+          fi
 
       - name: Upload workspace
         uses: actions/upload-artifact@v5
@@ -95,7 +100,7 @@ jobs:
         with:
           name: PHP-${{ inputs.php-version-base }}-Android-workspace-PM${{ inputs.pm-version-major }}
           path: workspace.tar.gz
-          if-no-files-found: error
+          if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
   # Linux x86_64 (dinamico, con libs .so + symlinks)
@@ -123,7 +128,7 @@ jobs:
         run: |
           set -ex
           trap "exit 1" ERR
-          ./compile.sh -t linux64 -j 4 -P ${{ inputs.pm-version-major }} -c ./download_cache -D -z ${{ inputs.php-version-base }}
+          bash ./compile.sh -t linux64 -j 4 -P ${{ inputs.pm-version-major }} -c ./download_cache -D -z ${{ inputs.php-version-base }}
 
       - name: Verify FFI
         run: |
@@ -133,8 +138,8 @@ jobs:
 
       - name: Create tarball (verifica symlinks)
         run: |
-          ./package.sh ./PHP-${{ inputs.php-version-base }}-Linux-x86_64-PM${{ inputs.pm-version-major }}.tar.gz bin
-          ./package.sh ./Z-PHP-${{ inputs.php-version-base }}-Linux-x86_64-PM${{ inputs.pm-version-major }}-debugging-symbols.tar.gz bin-debug
+          bash ./package.sh ./PHP-${{ inputs.php-version-base }}-Linux-x86_64-PM${{ inputs.pm-version-major }}.tar.gz bin
+          bash ./package.sh ./Z-PHP-${{ inputs.php-version-base }}-Linux-x86_64-PM${{ inputs.pm-version-major }}-debugging-symbols.tar.gz bin-debug
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
@@ -149,7 +154,12 @@ jobs:
 
       - name: Prepare workspace for upload
         if: failure()
-        run: tar -czf workspace.tar.gz install_data
+        run: |
+          if [ -d install_data ]; then
+            tar -czf workspace.tar.gz install_data
+          else
+            echo "install_data no existe: compile.sh fallo antes de crearlo (revisa install.log)"
+          fi
 
       - name: Upload workspace
         uses: actions/upload-artifact@v5
@@ -157,7 +167,7 @@ jobs:
         with:
           name: PHP-${{ inputs.php-version-base }}-Linux-x86_64-workspace-PM${{ inputs.pm-version-major }}
           path: workspace.tar.gz
-          if-no-files-found: error
+          if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
   # Linux arm64 "Cobalt" (Azure Cobalt 100 = Neoverse N2). Compila NATIVO en runner arm64.
@@ -185,7 +195,7 @@ jobs:
         run: |
           set -ex
           trap "exit 1" ERR
-          ./compile.sh -t linux-arm64-cobalt -j 4 -P ${{ inputs.pm-version-major }} -c ./download_cache -D -z ${{ inputs.php-version-base }}
+          bash ./compile.sh -t linux-arm64-cobalt -j 4 -P ${{ inputs.pm-version-major }} -c ./download_cache -D -z ${{ inputs.php-version-base }}
 
       - name: Verify FFI
         run: |
@@ -195,8 +205,8 @@ jobs:
 
       - name: Create tarball (verifica symlinks)
         run: |
-          ./package.sh ./PHP-${{ inputs.php-version-base }}-Linux-arm64-Cobalt-PM${{ inputs.pm-version-major }}.tar.gz bin
-          ./package.sh ./Z-PHP-${{ inputs.php-version-base }}-Linux-arm64-Cobalt-PM${{ inputs.pm-version-major }}-debugging-symbols.tar.gz bin-debug
+          bash ./package.sh ./PHP-${{ inputs.php-version-base }}-Linux-arm64-Cobalt-PM${{ inputs.pm-version-major }}.tar.gz bin
+          bash ./package.sh ./Z-PHP-${{ inputs.php-version-base }}-Linux-arm64-Cobalt-PM${{ inputs.pm-version-major }}-debugging-symbols.tar.gz bin-debug
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
@@ -211,7 +221,12 @@ jobs:
 
       - name: Prepare workspace for upload
         if: failure()
-        run: tar -czf workspace.tar.gz install_data
+        run: |
+          if [ -d install_data ]; then
+            tar -czf workspace.tar.gz install_data
+          else
+            echo "install_data no existe: compile.sh fallo antes de crearlo (revisa install.log)"
+          fi
 
       - name: Upload workspace
         uses: actions/upload-artifact@v5
@@ -219,4 +234,4 @@ jobs:
         with:
           name: PHP-${{ inputs.php-version-base }}-Linux-arm64-Cobalt-workspace-PM${{ inputs.pm-version-major }}
           path: workspace.tar.gz
-          if-no-files-found: error
+          if-no-files-found: ignore
