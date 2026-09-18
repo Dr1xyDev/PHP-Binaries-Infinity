@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-PHP_VERSIONS=("8.1.34" "8.2.30" "8.3.29" "8.4.16" "8.5.0")
+# Solo PHP 8.4 (las demas versiones fueron removidas a proposito)
+PHP_VERSIONS=("8.4.16")
 
 #### NOTE: Tags with "v" prefixes behave weirdly in the GitHub API. They'll be stripped in some places but not others.
 #### Use commit hashes to avoid this.
@@ -22,6 +23,7 @@ OPENSSL_VERSION="3.6.0"
 LIBZIP_VERSION="1.11.4"
 SQLITE3_VERSION="3510100" #3.51.1
 LIBDEFLATE_VERSION="c8c56a20f8f621e6a966b716b31f1dedab6a41e3" #1.25 - see above note about "v" prefixes
+LIBFFI_VERSION="3.4.8"
 
 EXT_PMMPTHREAD_VERSION="6.3.0"
 EXT_YAML_VERSION="2.3.0"
@@ -265,7 +267,7 @@ function php_version_id {
 PREFERRED_PHP_VERSION_BASE=""
 case $PM_VERSION_MAJOR in
 	5)
-		PREFERRED_PHP_VERSION_BASE="8.2"
+		PREFERRED_PHP_VERSION_BASE="8.4"
 		;;
 	"")
 		write_error "Please specify PocketMine-MP major version target with -P (e.g. -P5)"
@@ -296,7 +298,7 @@ done
 
 if [ "$PHP_VERSION" == "" ]; then
 	write_error "Unsupported PHP base version $PHP_VERSION_BASE"
-	write_error "Example inputs: 8.2, 8.3"
+	write_error "Este build solo soporta PHP 8.4 (ej: -z 8.4)"
 	exit 1
 fi
 
@@ -377,6 +379,14 @@ function download_github_src {
 	download_file "https://github.com/$1/archive/$2.tar.gz" "$3"
 }
 
+#1: github repo
+#2: tag
+#3: release asset filename
+#4: cache prefix
+function download_github_src_release {
+	download_file "https://github.com/$1/releases/download/$2/$3" "$4"
+}
+
 GMP_ABI=""
 TOOLCHAIN_PREFIX=""
 OPENSSL_TARGET=""
@@ -418,6 +428,19 @@ else
 		GMP_ABI="64"
 		OPENSSL_TARGET="linux-x86_64"
 		write_out "INFO" "Compiling for Linux x86_64"
+	elif [[ "$COMPILE_TARGET" == "linux-arm64-cobalt" ]]; then
+		# Azure Cobalt 100 = Arm Neoverse N2 (ARMv9.0-A). Compilacion NATIVA en un host aarch64 glibc.
+		if [ "$(uname -m)" != "aarch64" ]; then
+			write_error "linux-arm64-cobalt debe compilarse en un host aarch64 (esto NO es cross-compile)"
+			exit 1
+		fi
+		# -mcpu=neoverse-n2 implica -march y -mtune correctos para N2.
+		# Si el gcc es muy viejo y no lo conoce, el test de mas abajo cae a armv8.2-a.
+		[ -z "$march" ] && march="armv8.5-a";
+		[ -z "$mtune" ] && mtune=neoverse-n2;
+		GMP_ABI="64"
+		OPENSSL_TARGET="linux-aarch64"
+		write_out "INFO" "Compiling for Linux arm64 (Azure Cobalt 100 / Neoverse N2)"
 	elif [[ "$COMPILE_TARGET" == "mac-x86-64" ]]; then
 		[ -z "$march" ] && march=core2;
 		[ -z "$mtune" ] && mtune=generic;
@@ -448,7 +471,7 @@ else
 		CMAKE_GLOBAL_EXTRA_FLAGS="-DCMAKE_OSX_ARCHITECTURES=arm64"
 		write_out "INFO" "Compiling for MacOS M1"
 	elif [[ "$COMPILE_TARGET" != "" ]]; then
-		write_error "Please supply a proper platform [mac-arm64 mac-x86-64 linux linux64] to compile for"
+		write_error "Please supply a proper platform [linux64 linux-arm64-cobalt android-aarch64(-x)] to compile for"
 		exit 1
 	elif [ -z "$CFLAGS" ]; then
 		if [ `getconf LONG_BIT` == "64" ]; then
@@ -1030,6 +1053,42 @@ function build_sqlite3 {
 	write_done
 }
 
+function build_libffi {
+	if [ "$DO_STATIC" == "yes" ]; then
+		local EXTRA_FLAGS="--disable-shared --enable-static"
+	else
+		local EXTRA_FLAGS="--enable-shared --disable-static"
+	fi
+
+	write_library libffi "$LIBFFI_VERSION"
+	local libffi_dir="./libffi-$LIBFFI_VERSION"
+	if cant_use_cache "$libffi_dir"; then
+		rm -rf "$libffi_dir"
+		write_download
+		# el tarball de release ya trae ./configure (no hace falta autogen.sh)
+		download_github_src_release "libffi/libffi" "v$LIBFFI_VERSION" "libffi-$LIBFFI_VERSION.tar.gz" "libffi" | tar -zx >> "$DIR/install.log" 2>&1
+		cd "$libffi_dir"
+
+		write_configure
+		RANLIB=$RANLIB ./configure \
+		--prefix="$INSTALL_DIR" \
+		--disable-docs \
+		--disable-multi-os-directory \
+		$EXTRA_FLAGS \
+		$CONFIGURE_FLAGS >> "$DIR/install.log" 2>&1
+
+		write_compile
+		make -j $THREADS >> "$DIR/install.log" 2>&1 && mark_cache
+	else
+		write_caching
+		cd "$libffi_dir"
+	fi
+	write_install
+	make install >> "$DIR/install.log" 2>&1
+	cd ..
+	write_done
+}
+
 function build_libdeflate {
 	write_library libdeflate "$LIBDEFLATE_VERSION"
 	local libdeflate_dir="./libdeflate-$LIBDEFLATE_VERSION"
@@ -1086,6 +1145,7 @@ fi
 build_libxml2
 build_libzip
 build_sqlite3
+build_libffi
 build_libdeflate
 
 # PECL libraries
@@ -1313,6 +1373,7 @@ $HAVE_MYSQLI \
 --enable-xxhash \
 --enable-arraydebug \
 --enable-encoding \
+--with-ffi \
 $HAVE_VALGRIND \
 $CONFIGURE_FLAGS >> "$DIR/install.log" 2>&1
 write_compile
@@ -1373,6 +1434,7 @@ echo "short_open_tag=0" >> "$INSTALL_DIR/bin/php.ini"
 echo "asp_tags=0" >> "$INSTALL_DIR/bin/php.ini"
 echo "phar.require_hash=1" >> "$INSTALL_DIR/bin/php.ini"
 echo "igbinary.compact_strings=0" >> "$INSTALL_DIR/bin/php.ini"
+echo "ffi.enable=true" >> "$INSTALL_DIR/bin/php.ini"
 if [[ "$COMPILE_DEBUG" == "yes" ]]; then
 	echo "zend.assertions=1" >> "$INSTALL_DIR/bin/php.ini"
 else

@@ -1,4 +1,4 @@
-name: Build and publish PHP binaries
+name: Build and publish PHP 8.4 binaries
 
 on:
   push:
@@ -12,37 +12,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  all-builds:
-    name: PM${{ matrix.pm-version-major }} - PHP ${{ matrix.php-version-base }}
-    strategy:
-      matrix:
-        include:
-          - pm-version-major: 5
-            php-version-base: "8.1"
-          - pm-version-major: 5
-            php-version-base: "8.2"
-            special-release: default-latest #default = best for PM5, latest = display as latest on GitHub 
-          - pm-version-major: 5
-            php-version-base: "8.3"
-          - pm-version-major: 5
-            php-version-base: "8.4"
-          - pm-version-major: 5
-            php-version-base: "8.5"
-            pm-preview: true
-
+  # Solo PHP 8.4 para PocketMine-MP 5. Las demas versiones se quitaron a proposito.
+  build-php-8-4:
+    name: PM5 - PHP 8.4
     uses: ./.github/workflows/main-pm-matrix.yml
     with:
-      pm-version-major: ${{ matrix.pm-version-major }}
-      php-version-base: ${{ matrix.php-version-base }}
-      special-release: ${{ matrix.special-release || 'none' }}
-      pm-preview: ${{ matrix.pm-preview || false }}
+      pm-version-major: 5
+      php-version-base: "8.4"
     secrets: inherit
 
   publish-archive-release:
     name: Publish archive release
-    needs: [all-builds]
+    needs: [build-php-8-4]
     runs-on: ubuntu-22.04
     if: ${{ github.ref_name == 'stable' && github.ref_type == 'branch' && !contains(github.event.head_commit.message, '[no release]') }}
+    permissions:
+      contents: write
 
     steps:
       - name: Download artifacts
@@ -54,20 +39,14 @@ jobs:
         run: |
           echo "Built by: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> changelog.md
           echo "Build number: ${{ github.run_number }}" >> changelog.md
-          echo -e "\n\n\n" >> changelog.md
-          echo ":information_source: **Linux/MacOS users**: Please see [this page](https://doc.pmmp.io/en/rtfd/faq/installation/opcache.so.html) to fix extension loading errors. Also, check out the [PocketMine-MP Linux/MacOS installer](https://doc.pmmp.io/en/rtfd/installation/get-dot-pmmp-dot-io.html)." >> changelog.md
-          echo ":warning: **Windows users**: Don't forget to install [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) or the binary will not work!" >> changelog.md
-          echo -e "\n\n\n" >> changelog.md
+          echo -e "\n\nPHP 8.4 con ext-ffi. Linux x86_64, Linux arm64 (Azure Cobalt / Neoverse N2) y Android arm64 (estatico)." >> changelog.md
 
       - name: Create release
         uses: ncipollo/release-action@v1.20.0
         with:
           artifacts: |
             ${{ github.workspace }}/*PHP-*-PM*/*.tar.gz
-            ${{ github.workspace }}/*PHP-*-Windows-PM*/*.zip
-            ${{ github.workspace }}/*PHP-*.gdbinit/*.gdbinit
-
-          name: PHP (Build ${{ github.run_number }}) - Archive
+          name: PHP 8.4 (Build ${{ github.run_number }}) - Archive
           tag: php-build-${{ github.run_number }}
           commit: ${{ github.sha }}
           allowUpdates: false

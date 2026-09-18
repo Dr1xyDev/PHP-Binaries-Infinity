@@ -1,3 +1,31 @@
+# PHP 8.4 (+FFI) build scripts for PocketMine-MP — fork "Infinity"
+
+Este fork compila **solamente PHP 8.4** con **ext-ffi** para 3 targets:
+
+| Target | Comando | Tipo | Runner CI |
+|--------|---------|------|-----------|
+| Linux x86_64 | `./compile.sh -t linux64 -j4 -P5 -D` | dinamico (.so + symlinks) | `ubuntu-22.04` |
+| Linux arm64 **Cobalt** (Azure Cobalt 100 / Neoverse N2) | `./compile.sh -t linux-arm64-cobalt -j4 -P5 -D` | dinamico, **nativo** (compilar en un host aarch64) | `ubuntu-22.04-arm` |
+| Android arm64 | `./compile.sh -t android-aarch64 -x -j4 -P5 -D` | **estatico** (musl, cross-compile) | `ubuntu-22.04` |
+
+Windows y macOS fueron removidos. Las demas versiones de PHP (8.1/8.2/8.3/8.5) tambien.
+
+## FFI
+- `libffi 3.4.8` se compila junto con el resto de librerias y PHP se configura con `--with-ffi`.
+- `php.ini` se genera con `ffi.enable=true` (el default de PHP es `preload`, que **no** funciona desde plugins).
+- FFI queda compilado dentro del binario: no hace falta `extension=ffi`.
+- Compruebalo: `bin/php7/bin/php -m | grep -i ffi`
+
+## Empaquetado con symlinks
+Usa `./package.sh <salida.tar.gz> [dir]` en vez de `tar` a mano. Conserva los symlinks de las libs
+(`libffi.so -> libffi.so.8 -> libffi.so.8.x.y`), **aborta** si hay alguno roto, y verifica el tarball
+extrayendolo. Android es estatico y no genera `.so`, asi que ahi no hay symlinks que cuidar.
+
+**Al descomprimir**, usa `tar -xzf` (conserva links). Si lo pasas por `zip`, `cp -L` o `tar -h`, se pierden.
+
+---
+(Documentacion original de pmmp/PHP-Binaries abajo)
+
 # PHP binaries & PHP build scripts for PocketMine-MP
 [![Build status](https://github.com/pmmp/php-build-scripts/actions/workflows/main.yml/badge.svg)](https://github.com/pmmp/php-build-scripts/actions/workflows/main.yml)
 
