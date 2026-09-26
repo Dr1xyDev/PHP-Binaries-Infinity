@@ -81,6 +81,7 @@ jobs:
           name: PHP-${{ inputs.php-version-base }}-Android-PM${{ inputs.pm-version-major }}
           path: |
             ./*PHP-${{ inputs.php-version-base }}-Android-arm64-PM${{ inputs.pm-version-major }}*.tar.gz
+            ./*PHP-${{ inputs.php-version-base }}-Android-arm64-PM${{ inputs.pm-version-major }}*.zip
             install.log
             compile.sh
           if-no-files-found: error
@@ -148,6 +149,7 @@ jobs:
           name: PHP-${{ inputs.php-version-base }}-Linux-x86_64-PM${{ inputs.pm-version-major }}
           path: |
             ./*PHP-${{ inputs.php-version-base }}-Linux-x86_64-PM${{ inputs.pm-version-major }}*.tar.gz
+            ./*PHP-${{ inputs.php-version-base }}-Linux-x86_64-PM${{ inputs.pm-version-major }}*.zip
             install.log
             compile.sh
           if-no-files-found: error
@@ -215,6 +217,7 @@ jobs:
           name: PHP-${{ inputs.php-version-base }}-Linux-arm64-Cobalt-PM${{ inputs.pm-version-major }}
           path: |
             ./*PHP-${{ inputs.php-version-base }}-Linux-arm64-Cobalt-PM${{ inputs.pm-version-major }}*.tar.gz
+            ./*PHP-${{ inputs.php-version-base }}-Linux-arm64-Cobalt-PM${{ inputs.pm-version-major }}*.zip
             install.log
             compile.sh
           if-no-files-found: error

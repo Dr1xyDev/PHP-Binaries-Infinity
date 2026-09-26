@@ -16,12 +16,28 @@ Windows y macOS fueron removidos. Las demas versiones de PHP (8.1/8.2/8.3/8.5) t
 - FFI queda compilado dentro del binario: no hace falta `extension=ffi`.
 - Compruebalo: `bin/php7/bin/php -m | grep -i ffi`
 
-## Empaquetado con symlinks
-Usa `./package.sh <salida.tar.gz> [dir]` en vez de `tar` a mano. Conserva los symlinks de las libs
-(`libffi.so -> libffi.so.8 -> libffi.so.8.x.y`), **aborta** si hay alguno roto, y verifica el tarball
-extrayendolo. Android es estatico y no genera `.so`, asi que ahi no hay symlinks que cuidar.
+## Empaquetado: nada de libs .so vacías
+Usa `./package.sh <salida.tar.gz> [dir]` en vez de `tar` a mano. Lo que hace:
 
-**Al descomprimir**, usa `tar -xzf` (conserva links). Si lo pasas por `zip`, `cp -L` o `tar -h`, se pierden.
+1. Aborta si hay symlinks rotos (una lib que se perdería).
+2. **Convierte las cadenas de symlinks en hardlinks** (`libffi.so -> libffi.so.8 -> libffi.so.8.x.y`:
+   solo el último nombre es un archivo real; los demás apuntan a él). Con hardlinks, todos los nombres
+   son el mismo archivo con contenido completo. Así, aunque el extractor no soporte symlinks
+   (FileZilla, Windows, cPanel...), ninguna `.so` queda vacía ni desaparece: se extrae como archivo
+   normal y `ld` la resuelve igual.
+3. Genera también un **`.zip` gemelo** con el mismo contenido (descarga recomendada para
+   FileZilla/Windows/cPanel).
+4. Verifica el resultado extrayendo tar y zip en temporales y comparando **sha256 de cada `.so`**
+   contra el original: si alguna quedara vacía o truncada, el build falla en CI y no se publica.
+
+### Binarios en el repo (rama `binarios`)
+Cada push a `stable` dispara el job `publish-binaries-branch`, que sube los binarios compilados a la
+rama [`binarios`](../binarios): borra los binarios anteriores, sube los nuevos y conserva README y
+workflows. Nada se descarga de releases externos: las libs viajan dentro de los tarballs y no se
+pierde ninguna.
+
+**Al descomprimir**, usa `tar -xzf` o el `.zip`. Cualquiera de los dos conserva todas las libs
+intactas; ya no depende de que tu herramienta soporte symlinks.
 
 ---
 (Documentacion original de pmmp/PHP-Binaries abajo)

@@ -1536,6 +1536,42 @@ if [ "$SEPARATE_SYMBOLS" != "no" ]; then
 	write_done
 fi
 
+#<<<PASO 4: limpiar .so vacios y rehacer symlinks>>>
+#El paso de separar simbolos strippea las libs. Las cadenas de symlinks
+#(libssl.so -> libssl.so.3 -> libssl.so.3.0.x) solo tienen datos reales en el
+#ultimo nombre; los demas pueden quedar como Archivos NULOS de 0 bytes. Si se
+#empaquetan asi, al descomprimir en otro lado dan "File too short" o "not found".
+#Los quitamos y devolvemos a cada nombre su forma correcta: symlink al archivo real.
+while IFS= read -r -d '' file; do
+	if [ -f "$file" ] && [ ! -s "$file" ] && [ ! -L "$file" ]; then
+		rm -f "$file"
+	fi
+done < <(find "$INSTALL_DIR" \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' -o -name '*.dylib.*' \) -print0)
+#Si el strip se llevo el archivo real (rename del linker), el link quedaria roto:
+#restaurarlo desde bin-debug (que conserva las libs completas, sin strip).
+while IFS= read -r -d '' link; do
+	target="$(readlink "$link")"
+	case "$target" in /*) continue ;; esac
+	resolved_abs="$(cd "$(dirname "$link")" && readlink -m "$target")"
+	case "$resolved_abs" in "$INSTALL_DIR"/*) ;; *) continue ;; esac
+	rel="${resolved_abs#"$INSTALL_DIR"/}"
+	if [ ! -e "$link" ]; then
+		if [ -f "$SYMBOLS_DIR/$rel" ] && [ -s "$SYMBOLS_DIR/$rel" ]; then
+			ln -f "$SYMBOLS_DIR/$rel" "$link" 2>> "$DIR/install.log" || cp "$SYMBOLS_DIR/$rel" "$link" 2>> "$DIR/install.log"
+		else
+			rm -f "$link"
+			echo "AVISO: $link quedo roto (sin copia en bin-debug)" >> "$DIR/install.log"
+		fi
+	fi
+done < <(find "$INSTALL_DIR" \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' -o -name '*.dylib.*' \) -type l -print0)
+if [ "$(find "$INSTALL_DIR" \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' \) ! -type l -empty | wc -l)" -ne 0 ]; then
+	echo "ERROR: quedan .so vacios en $INSTALL_DIR:" >> "$DIR/install.log"
+	find "$INSTALL_DIR" \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' \) ! -type l -empty >> "$DIR/install.log"
+	exit 1
+fi
+echo "[empaquetado] 0 bytes limpiados y symlinks rehechos: $(find "$INSTALL_DIR" \( -name '*.so' -o -name '*.so.*' \) -type l | wc -l) links"
+#<<<FIN PASO 4>>>
+
 date >> "$DIR/install.log" 2>&1
 write_out "PocketMine" "You should start the server now using \"./start.sh\"."
 write_out "PocketMine" "If it doesn't work, please send the \"install.log\" file to the Bug Tracker."

@@ -40,14 +40,84 @@ jobs:
           echo "Built by: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> changelog.md
           echo "Build number: ${{ github.run_number }}" >> changelog.md
           echo -e "\n\nPHP 8.4 con ext-ffi. Linux x86_64, Linux arm64 (Azure Cobalt / Neoverse N2) y Android arm64 (estatico)." >> changelog.md
+          echo -e "\nIMPORTANTE: descarga el .zip (no el .tar.gz) si vas a subir los archivos por FileZilla/Windows/cPanel: el .zip no puede dejarte libs .so vacias." >> changelog.md
 
       - name: Create release
         uses: ncipollo/release-action@v1.20.0
         with:
           artifacts: |
             ${{ github.workspace }}/*PHP-*-PM*/*.tar.gz
+            ${{ github.workspace }}/*PHP-*-PM*/*.zip
           name: PHP 8.4 (Build ${{ github.run_number }}) - Archive
           tag: php-build-${{ github.run_number }}
           commit: ${{ github.sha }}
           allowUpdates: false
           bodyFile: ${{ github.workspace }}/changelog.md
+
+  # ---------------------------------------------------------------------------
+  # Publica los binarios compilados dentro del propio repo, en la rama 'binarios'.
+  # Cada build reemplaza COMPLETAMENTE el contenido anterior (los binarios viejos se
+  # eliminan) pero mantiene README, workflows y demas archivos de la rama.
+  # Los tarballs incluyen las libs como hardlinks (package.sh), asi que aunque
+  # GitHub los muestre como carpetas normales, ninguna lib .so se pierde ni queda vacia.
+  # ---------------------------------------------------------------------------
+  publish-binaries-branch:
+    name: Publish binaries to binarios branch
+    needs: [build-php-8-4]
+    runs-on: ubuntu-22.04
+    if: ${{ github.ref_name == 'stable' && github.ref_type == 'branch' && !contains(github.event.head_commit.message, '[no binaries]') }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: ${{ github.workspace }}/artifacts
+
+      - name: Extract tarballs
+        run: |
+          set -e
+          mkdir -p payload
+          # Z-* = tarballs de simbolos de depuracion: pueden superar los 100 MB por
+          # archivo y romperian el push a la rama; no aportan libs ni binario ejecutable.
+          find artifacts -name '*PHP-*-PM*.tar.gz' ! -name 'Z-*' -print0 | while IFS= read -r -d '' f; do
+            artifact_dir="$(basename "$(dirname "$f")")"
+            echo "Extrayendo $f -> payload/$artifact_dir"
+            mkdir -p "payload/$artifact_dir"
+            tar -xzf "$f" -C "payload/$artifact_dir"
+          done
+          find payload -maxdepth 2 -type d | sort
+
+      - name: Push binaries to binarios branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global init.defaultBranch binarios
+          git clone --depth 1 --branch binarios "https://x-access-token:${GITHUB_TOKEN}@${GITHUB_SERVER_URL#https://}/$GITHUB_REPOSITORY.git" binarios-repo || \
+            git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@${GITHUB_SERVER_URL#https://}/$GITHUB_REPOSITORY.git" binarios-repo
+          cd binarios-repo
+          if [ ! -d .git ]; then echo "ERROR: clone fallo"; exit 1; fi
+          if git rev-parse --verify -q origin/binarios >/dev/null; then
+            git checkout binarios
+          else
+            git checkout --orphan binarios
+            git rm -rf --ignore-unmatch -q . || true
+            echo "# Binarios compilados" > README.md
+            echo >> README.md
+            echo "Esta rama la genera automaticamente el workflow de CI (job publish-binaries-branch)." >> README.md
+            echo "Cada build borra los binarios anteriores y sube los nuevos. No editar a mano." >> README.md
+          fi
+          # Borrar SOLO el contenido generado anterior; conservar README, workflows, etc.
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'README.md' ! -name '.github' -exec rm -rf {} +
+          cp -a "${{ github.workspace }}/payload/." .
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Sin cambios que publicar"
+          else
+            git commit -m "CI: binarios PHP 8.4 build ${{ github.run_number }} (${{ github.sha }})"
+            git push origin binarios
+          fi
